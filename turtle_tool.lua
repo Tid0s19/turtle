@@ -1028,16 +1028,14 @@ local function fill(workOrder, totalPositions, validBlocks, protectMarkers)
             end
         end
 
-        -- Ascend, placing fill blocks up to one below marker level
-        while pos.y < -1 do
+        -- Ascend, placing fill blocks below as we go up
+        -- Last placement is at y=-1 (when turtle reaches y=0)
+        -- y=0 (marker level) stays clear
+        while pos.y < 0 do
             up()
             if selectFillBlock(validBlocks) then
                 turtle.placeDown()
             end
-        end
-        -- Return to surface without placing (keep marker level clear)
-        while pos.y < 0 do
-            up()
         end
 
         -- Make sure we're back at surface
