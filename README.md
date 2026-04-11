@@ -44,7 +44,7 @@ turtle_tool
 - `[T->]` = Turtle (facing the work area)
 - Place a CC Tweaked marker block at the opposite corner to auto-scan dimensions, or enter them manually.
 
-### Excavate / Fill (Custom Shape)
+### Excavate / Fill (Custom Shape — Full Perimeter)
 
 ```
    [C] [T->]
@@ -60,6 +60,23 @@ turtle_tool
 - The shape can be anything: rectangle, L-shape, circle, irregular polygon, etc.
 - The turtle will walk forward, find the perimeter, trace it, then work the interior.
 
+### Excavate / Fill (Custom Shape — Corners Only)
+
+```
+   [C] [T->]
+        |
+     M.....M
+    .        ...
+    .           M    <-- CC blocks at corners
+    .M        .         only; turtle draws
+     ....M...M         straight lines between
+```
+
+- Place CC Tweaked blocks **only at the corners/vertices** of your shape (minimum 3).
+- Enter the scan area dimensions. The turtle flies over the area at y+1 to find all corner markers.
+- Corners are connected with straight lines (Bresenham's algorithm) to form the full perimeter.
+- The interior is then computed the same way as full-perimeter mode.
+
 ## Modes
 
 ### Excavate
@@ -73,7 +90,7 @@ Fills gaps and holes in the defined area. At each column position:
 1. Descends until hitting solid ground
 2. Breaks plants, grass, flowers, wood, logs (replaceable blocks)
 3. Breaks torches and returns them to the chest (collectible blocks)
-4. Ascends back up, placing fill blocks at every empty position
+4. Ascends back up, placing fill blocks at every empty position **up to one block below the marker level** (y=-1 relative), leaving the marker level (y=0) clear
 
 Fill blocks are loaded from the chest behind the turtle. The turtle scans the chest first to learn which block types to use.
 
@@ -88,13 +105,25 @@ Two options:
 
 ### Custom Shape Mode
 
-1. Place CC Tweaked blocks (wired modem or network cable) around the **complete perimeter** of your shape.
+Two sub-modes:
+
+**Full Perimeter:**
+
+1. Place CC Tweaked blocks around the **complete perimeter** of your shape.
 2. The turtle walks forward until it hits the perimeter.
 3. It traces the perimeter using wall-following (keeping markers on its right).
 4. It records all marker positions and uses flood-fill to determine interior positions.
 5. It then works all interior positions in a serpentine pattern.
 
-This handles **any closed shape** of **any size**.
+**Corners Only:**
+
+1. Place CC Tweaked blocks at the **corners/vertices** only (minimum 3).
+2. Enter the scan area dimensions (length and width).
+3. The turtle scans the area from above to locate all corner markers.
+4. Corners are ordered by nearest-neighbor and connected with straight lines.
+5. The resulting perimeter is processed the same as full-perimeter mode.
+
+Both sub-modes handle **any closed shape** of **any size**.
 
 ## Controls
 

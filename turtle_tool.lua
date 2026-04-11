@@ -589,6 +589,109 @@ local function buildShapeFromPerimeter(markers)
     return area, workOrder, count
 end
 
+-- ---- Corner Marker Mode ----
+
+local function bresenhamLine(x1, z1, x2, z2)
+    local points = {}
+    local dx = math.abs(x2 - x1)
+    local dz = math.abs(z2 - z1)
+    local sx = x1 < x2 and 1 or -1
+    local sz = z1 < z2 and 1 or -1
+    local err = dx - dz
+    local cx, cz = x1, z1
+    while true do
+        table.insert(points, { x = cx, z = cz })
+        if cx == x2 and cz == z2 then break end
+        local e2 = 2 * err
+        if e2 > -dz then
+            err = err - dz
+            cx = cx + sx
+        end
+        if e2 < dx then
+            err = err + dx
+            cz = cz + sz
+        end
+    end
+    return points
+end
+
+local function scanForMarkers(scanLength, scanWidth)
+    local markers = {}
+    -- Move up to y=1 so we can inspectDown at y=0
+    up()
+    for z = 0, scanLength - 1 do
+        if z % 2 == 0 then
+            for x = 0, scanWidth - 1 do
+                moveTo(x, 1, z)
+                local ok, data = turtle.inspectDown()
+                if ok and isMarker(data) then
+                    table.insert(markers, { x = x, z = z })
+                end
+            end
+        else
+            for x = scanWidth - 1, 0, -1 do
+                moveTo(x, 1, z)
+                local ok, data = turtle.inspectDown()
+                if ok and isMarker(data) then
+                    table.insert(markers, { x = x, z = z })
+                end
+            end
+        end
+    end
+    moveTo(0, 1, 0)
+    down()
+    face(0)
+    return markers
+end
+
+local function orderMarkersNearest(markers)
+    if #markers <= 1 then return markers end
+    local ordered = {}
+    local used = {}
+    -- Start from first marker
+    table.insert(ordered, markers[1])
+    used[1] = true
+    for i = 2, #markers do
+        local last = ordered[#ordered]
+        local bestIdx, bestDist = nil, math.huge
+        for j = 1, #markers do
+            if not used[j] then
+                local d = math.abs(markers[j].x - last.x)
+                       + math.abs(markers[j].z - last.z)
+                if d < bestDist then
+                    bestDist = d
+                    bestIdx = j
+                end
+            end
+        end
+        if bestIdx then
+            used[bestIdx] = true
+            table.insert(ordered, markers[bestIdx])
+        end
+    end
+    return ordered
+end
+
+local function buildPerimeterFromCorners(corners)
+    local perimSet = {}
+    local perim = {}
+    for i = 1, #corners do
+        local next = (i % #corners) + 1
+        local pts = bresenhamLine(
+            corners[i].x, corners[i].z,
+            corners[next].x, corners[next].z
+        )
+        for _, p in ipairs(pts) do
+            local key = posKey(p.x, p.z)
+            if not perimSet[key] then
+                perimSet[key] = true
+                table.insert(perim, { x = p.x, z = p.z })
+            end
+        end
+    end
+    return perim
+end
+
 -- =================== Section 6: Excavate Mode ===============================
 
 local function excavate(workOrder, depth, totalPositions)
@@ -677,12 +780,16 @@ local function fill(workOrder, totalPositions, validBlocks)
             end
         end
 
-        -- Ascend back to surface, placing fill blocks below at every level
-        while pos.y < 0 do
+        -- Ascend, placing fill blocks up to one below marker level
+        while pos.y < -1 do
             up()
             if selectFillBlock(validBlocks) then
                 turtle.placeDown()
             end
+        end
+        -- Return to surface without placing (keep marker level clear)
+        while pos.y < 0 do
+            up()
         end
 
         -- Make sure we're back at surface
@@ -770,23 +877,23 @@ local function showHelp()
     term.setCursorPos(1, 3)
     term.write("SETUP:")
     term.setCursorPos(1, 4)
-    term.write(" Place chest BEHIND the turtle.")
+    term.write(" Chest BEHIND turtle. Turtle")
     term.setCursorPos(1, 5)
-    term.write(" Turtle faces the work area.")
+    term.write(" faces the work area.")
     term.setCursorPos(1, 6)
-    term.write("RECTANGLE MODE:")
+    term.write("RECTANGLE: dimensions or scan.")
     term.setCursorPos(1, 7)
-    term.write(" Enter dimensions or place a")
+    term.write("CUSTOM FULL: CC blocks around")
     term.setCursorPos(1, 8)
-    term.write(" CC block at opposite corner.")
+    term.write(" entire perimeter.")
     term.setCursorPos(1, 9)
-    term.write("CUSTOM SHAPE MODE:")
+    term.write("CUSTOM CORNERS: CC blocks at")
     term.setCursorPos(1, 10)
-    term.write(" Place CC blocks (modem/cable)")
+    term.write(" corners only, turtle connects")
     term.setCursorPos(1, 11)
-    term.write(" around full perimeter. Turtle")
+    term.write(" with straight lines.")
     term.setCursorPos(1, 12)
-    term.write(" traces the outline.")
+    term.write("Fill leaves marker level clear.")
     waitForEnter(13)
 end
 
@@ -926,49 +1033,127 @@ end
 local function setupCustomShape()
     clearScreen()
     drawHeader("CUSTOM SHAPE SETUP")
-    setColor(colors.lightGray)
+    setColor(colors.white)
     term.setCursorPos(1, 3)
-    term.write("Place CC Tweaked blocks")
+    term.write("[1] Full perimeter")
     term.setCursorPos(1, 4)
-    term.write("(modem/cable) around the")
+    term.write("    CC blocks on every edge")
     term.setCursorPos(1, 5)
-    term.write("FULL perimeter of your shape.")
+    term.write("    block.")
     term.setCursorPos(1, 7)
-    term.write("Shape can be any form:")
+    term.write("[2] Corners only")
     term.setCursorPos(1, 8)
-    term.write("rectangle, L, circle, etc.")
-    term.setCursorPos(1, 10)
-    term.write("Turtle must face toward the")
+    term.write("    CC blocks at corners,")
+    term.setCursorPos(1, 9)
+    term.write("    turtle connects the dots.")
+    setColor(colors.lightGray)
     term.setCursorPos(1, 11)
-    term.write("shape with chest behind it.")
-    waitForEnter(13)
+    term.write("Choose [1/2]: ")
+    setColor(colors.white)
 
-    clearScreen()
-    drawHeader("TRACING PERIMETER")
-    term.setCursorPos(1, 4)
-    term.write("Walking to find perimeter...")
-
-    local markers, err = tracePerimeter()
-    if err then
-        setColor(colors.red)
-        term.setCursorPos(1, 6)
-        term.write("Error: " .. err)
-        os.sleep(3)
-        returnHome()
-        return nil
+    local choice
+    while true do
+        local _, key = os.pullEvent("char")
+        if key == "1" then choice = "full"; break
+        elseif key == "2" then choice = "corners"; break
+        end
     end
 
-    setColor(colors.green)
-    term.setCursorPos(1, 6)
-    term.write("Found " .. #markers .. " marker blocks.")
-    term.setCursorPos(1, 7)
-    term.write("Building shape map...")
-    os.sleep(1)
+    if choice == "full" then
+        -- Existing full-perimeter trace flow
+        clearScreen()
+        drawHeader("FULL PERIMETER SETUP")
+        setColor(colors.lightGray)
+        term.setCursorPos(1, 3)
+        term.write("Place CC blocks around the")
+        term.setCursorPos(1, 4)
+        term.write("FULL perimeter of your shape.")
+        term.setCursorPos(1, 6)
+        term.write("Shape can be any form:")
+        term.setCursorPos(1, 7)
+        term.write("rectangle, L, circle, etc.")
+        term.setCursorPos(1, 9)
+        term.write("Turtle must face toward the")
+        term.setCursorPos(1, 10)
+        term.write("shape with chest behind it.")
+        waitForEnter(12)
 
-    -- Return home before building map
-    returnHome()
+        clearScreen()
+        drawHeader("TRACING PERIMETER")
+        term.setCursorPos(1, 4)
+        term.write("Walking to find perimeter...")
 
-    return { markers = markers }
+        local markers, err = tracePerimeter()
+        if err then
+            setColor(colors.red)
+            term.setCursorPos(1, 6)
+            term.write("Error: " .. err)
+            os.sleep(3)
+            returnHome()
+            return nil
+        end
+
+        setColor(colors.green)
+        term.setCursorPos(1, 6)
+        term.write("Found " .. #markers .. " markers.")
+        term.setCursorPos(1, 7)
+        term.write("Building shape map...")
+        os.sleep(1)
+
+        returnHome()
+        return { markers = markers }
+
+    else
+        -- Corners-only mode
+        clearScreen()
+        drawHeader("CORNERS SCAN SETUP")
+        setColor(colors.lightGray)
+        term.setCursorPos(1, 3)
+        term.write("Place CC blocks at corners")
+        term.setCursorPos(1, 4)
+        term.write("of your shape (min 3).")
+        setColor(colors.white)
+        local scanLen = promptNumber("Scan length (fwd): ", 6)
+        local scanWid = promptNumber("Scan width (right): ", 7)
+        if not scanLen or not scanWid
+            or scanLen < 1 or scanWid < 1 then
+            setColor(colors.red)
+            term.setCursorPos(1, 9)
+            term.write("Invalid dimensions!")
+            os.sleep(2)
+            return nil
+        end
+
+        clearScreen()
+        drawHeader("SCANNING CORNERS")
+        term.setCursorPos(1, 4)
+        term.write("Scanning " .. scanLen .. "x" .. scanWid .. " area...")
+
+        local rawMarkers = scanForMarkers(scanLen, scanWid)
+
+        if #rawMarkers < 3 then
+            setColor(colors.red)
+            term.setCursorPos(1, 6)
+            term.write("Found " .. #rawMarkers .. " corners.")
+            term.setCursorPos(1, 7)
+            term.write("Need at least 3!")
+            os.sleep(3)
+            returnHome()
+            return nil
+        end
+
+        local ordered = orderMarkersNearest(rawMarkers)
+        local perim = buildPerimeterFromCorners(ordered)
+
+        setColor(colors.green)
+        term.setCursorPos(1, 6)
+        term.write("Found " .. #rawMarkers .. " corners.")
+        term.setCursorPos(1, 7)
+        term.write("Perimeter: " .. #perim .. " blocks.")
+        os.sleep(1)
+
+        return { markers = perim }
+    end
 end
 
 -- ---- Pre-flight Check ----
