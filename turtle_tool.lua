@@ -698,8 +698,10 @@ local function followCornerRoute()
         return blocks
     end
 
-    -- Find exit direction from an L-shape given entry direction
-    local function findExitInfo(blocks, entryDX, entryDZ)
+    -- Find exit direction from an L-shape
+    -- approachX/Z = where the turtle came from (before the L)
+    -- Exit tip = the tip FARTHEST from the approach position
+    local function findExitInfo(blocks, approachX, approachZ)
         local blockSet = {}
         for _, b in ipairs(blocks) do
             blockSet[posKey(b.x, b.z)] = true
@@ -718,30 +720,37 @@ local function followCornerRoute()
             end
         end
 
+        -- Pick the tip farthest from approach position as exit
+        local exitTip = nil
+        local maxDist = -1
         for _, tip in ipairs(tips) do
-            local nx, nz
-            if blockSet[posKey(tip.x + 1, tip.z)] then
-                nx, nz = tip.x + 1, tip.z
-            elseif blockSet[posKey(tip.x - 1, tip.z)] then
-                nx, nz = tip.x - 1, tip.z
-            elseif blockSet[posKey(tip.x, tip.z + 1)] then
-                nx, nz = tip.x, tip.z + 1
-            elseif blockSet[posKey(tip.x, tip.z - 1)] then
-                nx, nz = tip.x, tip.z - 1
-            end
-
-            if nx then
-                -- Outward direction: from neighbor toward tip
-                local outDX = tip.x - nx
-                local outDZ = tip.z - nz
-                -- Skip entry tip (points opposite to entry direction)
-                if outDX ~= -entryDX or outDZ ~= -entryDZ then
-                    return outDX, outDZ, tip
-                end
+            local d = math.abs(tip.x - approachX)
+                    + math.abs(tip.z - approachZ)
+            if d > maxDist then
+                maxDist = d
+                exitTip = tip
             end
         end
 
-        return nil, nil, nil
+        if not exitTip then return nil, nil, nil end
+
+        -- Get outward direction from exit tip
+        local nx, nz
+        if blockSet[posKey(exitTip.x + 1, exitTip.z)] then
+            nx, nz = exitTip.x + 1, exitTip.z
+        elseif blockSet[posKey(exitTip.x - 1, exitTip.z)] then
+            nx, nz = exitTip.x - 1, exitTip.z
+        elseif blockSet[posKey(exitTip.x, exitTip.z + 1)] then
+            nx, nz = exitTip.x, exitTip.z + 1
+        elseif blockSet[posKey(exitTip.x, exitTip.z - 1)] then
+            nx, nz = exitTip.x, exitTip.z - 1
+        end
+
+        if not nx then return nil, nil, nil end
+
+        local outDX = exitTip.x - nx
+        local outDZ = exitTip.z - nz
+        return outDX, outDZ, exitTip
     end
 
     -- Process first L-shape
@@ -752,9 +761,19 @@ local function followCornerRoute()
     local corner = findLCorner(blocks)
     table.insert(corners, corner)
 
-    local entryDX = dx[approachDir]
-    local entryDZ = dz[approachDir]
-    local exitDX, exitDZ, exitTip = findExitInfo(blocks, entryDX, entryDZ)
+    -- Approach position = one step back from first cable in approach dir
+    local approachX = firstX - dx[approachDir]
+    local approachZ = firstZ - dz[approachDir]
+    local exitDX, exitDZ, exitTip = findExitInfo(blocks, approachX, approachZ)
+
+    term.setCursorPos(1, 6)
+    term.clearLine()
+    term.write("L#1: " .. #blocks .. " cables")
+    if exitDX then
+        term.setCursorPos(1, 7)
+        term.clearLine()
+        term.write("Exit: " .. exitDX .. "," .. exitDZ)
+    end
 
     if not exitDX then
         moveTo(0, 1, 0)
@@ -765,12 +784,17 @@ local function followCornerRoute()
 
     -- Follow the route: walk gaps, traverse L-shapes
     local maxGap = 256
+    local lCount = 1
 
     while true do
         local searchX = exitTip.x + exitDX
         local searchZ = exitTip.z + exitDZ
         local foundNext = false
         local loopComplete = false
+
+        term.setCursorPos(1, 8)
+        term.clearLine()
+        term.write("Walking gap...")
 
         for gap = 1, maxGap do
             local key = posKey(searchX, searchZ)
@@ -795,7 +819,12 @@ local function followCornerRoute()
             return nil, nil, "Gap between corners too large"
         end
 
-        if loopComplete then break end
+        if loopComplete then
+            term.setCursorPos(1, 8)
+            term.clearLine()
+            term.write("Route complete!")
+            break
+        end
 
         -- Traverse new L-shape
         blocks = traverseL(searchX, searchZ)
@@ -805,9 +834,20 @@ local function followCornerRoute()
         corner = findLCorner(blocks)
         table.insert(corners, corner)
 
-        entryDX = exitDX
-        entryDZ = exitDZ
-        exitDX, exitDZ, exitTip = findExitInfo(blocks, entryDX, entryDZ)
+        -- Approach position = one step back from found cable
+        approachX = searchX - exitDX
+        approachZ = searchZ - exitDZ
+        exitDX, exitDZ, exitTip = findExitInfo(blocks, approachX, approachZ)
+
+        lCount = lCount + 1
+        term.setCursorPos(1, 6)
+        term.clearLine()
+        term.write("L#" .. lCount .. ": " .. #blocks .. " cables")
+        if exitDX then
+            term.setCursorPos(1, 7)
+            term.clearLine()
+            term.write("Exit: " .. exitDX .. "," .. exitDZ)
+        end
 
         if not exitDX then
             moveTo(0, 1, 0)
