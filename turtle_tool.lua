@@ -651,7 +651,10 @@ local function followCornerRoute()
     end
 
     -- Go up to y=1 and move above the cable
-    up()
+    refuel()
+    if not up() then
+        return nil, nil, "Cannot move up (check fuel)"
+    end
     forward()
 
     local firstX, firstZ = pos.x, pos.z
