@@ -615,61 +615,214 @@ local function bresenhamLine(x1, z1, x2, z2)
     return points
 end
 
-local function scanForMarkers(scanLength, scanWidth)
-    local markers = {}
-    -- Move up to y=1 so we can inspectDown at y=0
+local function findLCorner(blocks)
+    -- Find the bend point of an L-shape: the block with
+    -- cable neighbors in two perpendicular directions
+    local blockSet = {}
+    for _, b in ipairs(blocks) do
+        blockSet[posKey(b.x, b.z)] = true
+    end
+    for _, b in ipairs(blocks) do
+        local hasNS = blockSet[posKey(b.x, b.z + 1)]
+                   or blockSet[posKey(b.x, b.z - 1)]
+        local hasEW = blockSet[posKey(b.x + 1, b.z)]
+                   or blockSet[posKey(b.x - 1, b.z)]
+        if hasNS and hasEW then
+            return b
+        end
+    end
+    return blocks[math.ceil(#blocks / 2)]
+end
+
+local function followCornerRoute()
+    local approachDir = facing
+    -- Walk forward at y=0 until finding a cable block
+    local found = false
+    for i = 1, 256 do
+        local ok, data = turtle.inspect()
+        if ok and data.name == "computercraft:cable" then
+            found = true
+            break
+        end
+        forward()
+    end
+    if not found then
+        return nil, nil, "No cable found within 256 blocks"
+    end
+
+    -- Go up to y=1 and move above the cable
     up()
-    for z = 0, scanLength - 1 do
-        if z % 2 == 0 then
-            for x = 0, scanWidth - 1 do
-                moveTo(x, 1, z)
-                local ok, data = turtle.inspectDown()
-                if ok and isMarker(data) then
-                    table.insert(markers, { x = x, z = z })
-                end
-            end
-        else
-            for x = scanWidth - 1, 0, -1 do
-                moveTo(x, 1, z)
-                local ok, data = turtle.inspectDown()
-                if ok and isMarker(data) then
-                    table.insert(markers, { x = x, z = z })
+    forward()
+
+    local firstX, firstZ = pos.x, pos.z
+    local globalVisited = {}
+    local allCableBlocks = {}
+    local corners = {}
+
+    -- Check if position has cable below (moves turtle there)
+    local function hasCableAt(x, z)
+        moveTo(x, 1, z)
+        local ok, data = turtle.inspectDown()
+        return ok and data.name == "computercraft:cable"
+    end
+
+    -- BFS: find all cable blocks connected to starting position
+    local function traverseL(sx, sz)
+        local blocks = {}
+        local queue = { { x = sx, z = sz } }
+        local head = 1
+        globalVisited[posKey(sx, sz)] = true
+        table.insert(blocks, { x = sx, z = sz })
+
+        while head <= #queue do
+            local cur = queue[head]
+            head = head + 1
+            local neighbors = {
+                { x = cur.x + 1, z = cur.z },
+                { x = cur.x - 1, z = cur.z },
+                { x = cur.x, z = cur.z + 1 },
+                { x = cur.x, z = cur.z - 1 },
+            }
+            for _, n in ipairs(neighbors) do
+                local key = posKey(n.x, n.z)
+                if not globalVisited[key] then
+                    if hasCableAt(n.x, n.z) then
+                        globalVisited[key] = true
+                        table.insert(queue, n)
+                        table.insert(blocks, { x = n.x, z = n.z })
+                    end
                 end
             end
         end
+
+        return blocks
     end
+
+    -- Find exit direction from an L-shape given entry direction
+    local function findExitInfo(blocks, entryDX, entryDZ)
+        local blockSet = {}
+        for _, b in ipairs(blocks) do
+            blockSet[posKey(b.x, b.z)] = true
+        end
+
+        -- Tips: blocks with 0 or 1 cable neighbors
+        local tips = {}
+        for _, b in ipairs(blocks) do
+            local nc = 0
+            if blockSet[posKey(b.x + 1, b.z)] then nc = nc + 1 end
+            if blockSet[posKey(b.x - 1, b.z)] then nc = nc + 1 end
+            if blockSet[posKey(b.x, b.z + 1)] then nc = nc + 1 end
+            if blockSet[posKey(b.x, b.z - 1)] then nc = nc + 1 end
+            if nc <= 1 then
+                table.insert(tips, b)
+            end
+        end
+
+        for _, tip in ipairs(tips) do
+            local nx, nz
+            if blockSet[posKey(tip.x + 1, tip.z)] then
+                nx, nz = tip.x + 1, tip.z
+            elseif blockSet[posKey(tip.x - 1, tip.z)] then
+                nx, nz = tip.x - 1, tip.z
+            elseif blockSet[posKey(tip.x, tip.z + 1)] then
+                nx, nz = tip.x, tip.z + 1
+            elseif blockSet[posKey(tip.x, tip.z - 1)] then
+                nx, nz = tip.x, tip.z - 1
+            end
+
+            if nx then
+                -- Outward direction: from neighbor toward tip
+                local outDX = tip.x - nx
+                local outDZ = tip.z - nz
+                -- Skip entry tip (points opposite to entry direction)
+                if outDX ~= -entryDX or outDZ ~= -entryDZ then
+                    return outDX, outDZ, tip
+                end
+            end
+        end
+
+        return nil, nil, nil
+    end
+
+    -- Process first L-shape
+    local blocks = traverseL(firstX, firstZ)
+    for _, b in ipairs(blocks) do
+        table.insert(allCableBlocks, b)
+    end
+    local corner = findLCorner(blocks)
+    table.insert(corners, corner)
+
+    local entryDX = dx[approachDir]
+    local entryDZ = dz[approachDir]
+    local exitDX, exitDZ, exitTip = findExitInfo(blocks, entryDX, entryDZ)
+
+    if not exitDX then
+        moveTo(0, 1, 0)
+        down()
+        face(0)
+        return nil, nil, "Could not determine exit direction"
+    end
+
+    -- Follow the route: walk gaps, traverse L-shapes
+    local maxGap = 256
+
+    while true do
+        local searchX = exitTip.x + exitDX
+        local searchZ = exitTip.z + exitDZ
+        local foundNext = false
+        local loopComplete = false
+
+        for gap = 1, maxGap do
+            local key = posKey(searchX, searchZ)
+            if globalVisited[key] then
+                -- Hit a previously visited cable block = back at start
+                loopComplete = true
+                foundNext = true
+                break
+            end
+            if hasCableAt(searchX, searchZ) then
+                foundNext = true
+                break
+            end
+            searchX = searchX + exitDX
+            searchZ = searchZ + exitDZ
+        end
+
+        if not foundNext then
+            moveTo(0, 1, 0)
+            down()
+            face(0)
+            return nil, nil, "Gap between corners too large"
+        end
+
+        if loopComplete then break end
+
+        -- Traverse new L-shape
+        blocks = traverseL(searchX, searchZ)
+        for _, b in ipairs(blocks) do
+            table.insert(allCableBlocks, b)
+        end
+        corner = findLCorner(blocks)
+        table.insert(corners, corner)
+
+        entryDX = exitDX
+        entryDZ = exitDZ
+        exitDX, exitDZ, exitTip = findExitInfo(blocks, entryDX, entryDZ)
+
+        if not exitDX then
+            moveTo(0, 1, 0)
+            down()
+            face(0)
+            return nil, nil, "Could not determine exit direction"
+        end
+    end
+
+    -- Return home
     moveTo(0, 1, 0)
     down()
     face(0)
-    return markers
-end
 
-local function orderMarkersNearest(markers)
-    if #markers <= 1 then return markers end
-    local ordered = {}
-    local used = {}
-    -- Start from first marker
-    table.insert(ordered, markers[1])
-    used[1] = true
-    for i = 2, #markers do
-        local last = ordered[#ordered]
-        local bestIdx, bestDist = nil, math.huge
-        for j = 1, #markers do
-            if not used[j] then
-                local d = math.abs(markers[j].x - last.x)
-                       + math.abs(markers[j].z - last.z)
-                if d < bestDist then
-                    bestDist = d
-                    bestIdx = j
-                end
-            end
-        end
-        if bestIdx then
-            used[bestIdx] = true
-            table.insert(ordered, markers[bestIdx])
-        end
-    end
-    return ordered
+    return corners, allCableBlocks, nil
 end
 
 local function buildPerimeterFromCorners(corners)
@@ -690,6 +843,17 @@ local function buildPerimeterFromCorners(corners)
         end
     end
     return perim
+end
+
+local function removeMarkers(cableBlocks)
+    -- Fly at y=1 to each cable position and dig from above
+    moveTo(pos.x, 1, pos.z)
+    for _, cb in ipairs(cableBlocks) do
+        moveTo(cb.x, 1, cb.z)
+        if turtle.detectDown() then
+            turtle.digDown()
+        end
+    end
 end
 
 -- =================== Section 6: Excavate Mode ===============================
@@ -736,7 +900,7 @@ end
 
 -- ==================== Section 7: Fill Mode ==================================
 
-local function fill(workOrder, totalPositions, validBlocks)
+local function fill(workOrder, totalPositions, validBlocks, protectMarkers)
     local processed = 0
     local maxDescend = 64
 
@@ -745,7 +909,10 @@ local function fill(workOrder, totalPositions, validBlocks)
             -- Low fuel warning
         end
 
-        -- Move to column position at surface (y=0)
+        -- Travel at y=1 to avoid destroying markers, then descend
+        if protectMarkers then
+            moveTo(wp.x, 1, wp.z)
+        end
         moveTo(wp.x, 0, wp.z)
 
         -- Descend, inspecting each block below
@@ -799,7 +966,13 @@ local function fill(workOrder, totalPositions, validBlocks)
 
         -- Check if we need more blocks
         if getFillBlockCount(validBlocks) < 10 then
+            if protectMarkers then
+                up() -- go to y=1 so home trip avoids markers
+            end
             dumpAndLoad()
+            if protectMarkers then
+                down()
+            end
         end
 
         -- Progress
@@ -887,11 +1060,11 @@ local function showHelp()
     term.setCursorPos(1, 8)
     term.write(" entire perimeter.")
     term.setCursorPos(1, 9)
-    term.write("CUSTOM CORNERS: CC blocks at")
+    term.write("CORNERS: Cable L-shapes at")
     term.setCursorPos(1, 10)
-    term.write(" corners only, turtle connects")
+    term.write(" corners. Turtle follows route")
     term.setCursorPos(1, 11)
-    term.write(" with straight lines.")
+    term.write(" & removes markers when done.")
     term.setCursorPos(1, 12)
     term.write("Fill leaves marker level clear.")
     waitForEnter(13)
@@ -1104,55 +1277,57 @@ local function setupCustomShape()
         return { markers = markers }
 
     else
-        -- Corners-only mode
+        -- Corners-only mode: follow L-shaped cable markers
         clearScreen()
-        drawHeader("CORNERS SCAN SETUP")
+        drawHeader("CORNER ROUTE SETUP")
         setColor(colors.lightGray)
         term.setCursorPos(1, 3)
-        term.write("Place CC blocks at corners")
+        term.write("Place cable blocks in L shapes")
         term.setCursorPos(1, 4)
-        term.write("of your shape (min 3).")
-        setColor(colors.white)
-        local scanLen = promptNumber("Scan length (fwd): ", 6)
-        local scanWid = promptNumber("Scan width (right): ", 7)
-        if not scanLen or not scanWid
-            or scanLen < 1 or scanWid < 1 then
-            setColor(colors.red)
-            term.setCursorPos(1, 9)
-            term.write("Invalid dimensions!")
-            os.sleep(2)
-            return nil
-        end
+        term.write("at each corner (min 3).")
+        term.setCursorPos(1, 5)
+        term.write("Each L points to the next.")
+        term.setCursorPos(1, 7)
+        term.write("Turtle must face toward the")
+        term.setCursorPos(1, 8)
+        term.write("nearest corner L.")
+        waitForEnter(10)
 
         clearScreen()
-        drawHeader("SCANNING CORNERS")
+        drawHeader("FOLLOWING ROUTE")
         term.setCursorPos(1, 4)
-        term.write("Scanning " .. scanLen .. "x" .. scanWid .. " area...")
+        term.write("Tracing corner route...")
 
-        local rawMarkers = scanForMarkers(scanLen, scanWid)
-
-        if #rawMarkers < 3 then
+        local rawCorners, cableBlocks, err = followCornerRoute()
+        if err then
             setColor(colors.red)
             term.setCursorPos(1, 6)
-            term.write("Found " .. #rawMarkers .. " corners.")
-            term.setCursorPos(1, 7)
-            term.write("Need at least 3!")
+            term.write("Error: " .. err)
             os.sleep(3)
             returnHome()
             return nil
         end
 
-        local ordered = orderMarkersNearest(rawMarkers)
-        local perim = buildPerimeterFromCorners(ordered)
+        if #rawCorners < 3 then
+            setColor(colors.red)
+            term.setCursorPos(1, 6)
+            term.write("Found " .. #rawCorners .. " corners.")
+            term.setCursorPos(1, 7)
+            term.write("Need at least 3!")
+            os.sleep(3)
+            return nil
+        end
+
+        local perim = buildPerimeterFromCorners(rawCorners)
 
         setColor(colors.green)
         term.setCursorPos(1, 6)
-        term.write("Found " .. #rawMarkers .. " corners.")
+        term.write("Found " .. #rawCorners .. " corners.")
         term.setCursorPos(1, 7)
         term.write("Perimeter: " .. #perim .. " blocks.")
         os.sleep(1)
 
-        return { markers = perim }
+        return { markers = perim, cableBlocks = cableBlocks }
     end
 end
 
@@ -1274,6 +1449,7 @@ end
 local function runFill()
     local areaMode = selectAreaMode()
     local workOrder, totalPositions, area
+    local cableBlocks = nil
 
     if areaMode == "rectangle" then
         local rect = setupRectangle()
@@ -1283,6 +1459,7 @@ local function runFill()
         local shape = setupCustomShape()
         if not shape then return end
         area, workOrder, totalPositions = buildShapeFromPerimeter(shape.markers)
+        cableBlocks = shape.cableBlocks
     end
 
     if totalPositions == 0 then
@@ -1323,7 +1500,8 @@ local function runFill()
     -- Load initial fill blocks
     loadFromChest()
 
-    -- Run fill
+    -- Run fill (protect markers if corner mode)
+    local protectMarkers = cableBlocks and #cableBlocks > 0
     clearScreen()
     drawHeader("FILLING")
     setColor(colors.white)
@@ -1332,9 +1510,18 @@ local function runFill()
     term.setCursorPos(1, 4)
     term.write("Descending to find ground...")
 
-    fill(workOrder, totalPositions, validBlocks)
+    fill(workOrder, totalPositions, validBlocks, protectMarkers)
+
+    -- Remove corner markers after fill is complete
+    if protectMarkers then
+        term.setCursorPos(1, 13)
+        term.clearLine()
+        term.write("Removing corner markers...")
+        removeMarkers(cableBlocks)
+    end
 
     returnHome()
+    dumpToChest()
 
     clearScreen()
     drawHeader("COMPLETE")

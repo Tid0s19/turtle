@@ -64,18 +64,18 @@ turtle_tool
 
 ```
    [C] [T->]
-        |
-     M.....M
-    .        ...
-    .           M    <-- CC blocks at corners
-    .M        .         only; turtle draws
-     ....M...M         straight lines between
+        |       L2---
+     L1          \    L = L-shaped cable markers
+      |           L3     (networking cable)
+      |           |
+     L5----------L4  Each L points to the next
 ```
 
-- Place CC Tweaked blocks **only at the corners/vertices** of your shape (minimum 3).
-- Enter the scan area dimensions. The turtle flies over the area at y+1 to find all corner markers.
-- Corners are connected with straight lines (Bresenham's algorithm) to form the full perimeter.
-- The interior is then computed the same way as full-perimeter mode.
+- Place networking cable blocks in **L-shapes at each corner** of your shape (minimum 3 corners).
+- Each L must have at least 3 cable blocks forming a right angle. One arm points back to the previous corner, the other arm points toward the next corner.
+- The turtle walks forward, finds the first L, follows it to determine the exit direction, then walks straight to find the next L. This repeats until the route loops back to the start.
+- L-shapes can be in any rotation or orientation (all 4 rotations supported).
+- In fill mode, markers are preserved during fill and automatically removed when complete.
 
 ## Modes
 
@@ -115,13 +115,14 @@ Two sub-modes:
 4. It records all marker positions and uses flood-fill to determine interior positions.
 5. It then works all interior positions in a serpentine pattern.
 
-**Corners Only:**
+**Corners Only (L-shaped markers):**
 
-1. Place CC Tweaked blocks at the **corners/vertices** only (minimum 3).
-2. Enter the scan area dimensions (length and width).
-3. The turtle scans the area from above to locate all corner markers.
-4. Corners are ordered by nearest-neighbor and connected with straight lines.
+1. Place networking cable blocks in **L-shapes at each corner** (minimum 3 corners, 3+ cables per L).
+2. Point the turtle at the nearest corner L-shape.
+3. The turtle walks forward, follows each L to determine the exit direction, and walks the gap to the next L.
+4. Corner bend points are connected with straight lines (Bresenham's algorithm).
 5. The resulting perimeter is processed the same as full-perimeter mode.
+6. In fill mode, markers are preserved during the fill and removed automatically when done.
 
 Both sub-modes handle **any closed shape** of **any size**.
 
@@ -139,11 +140,13 @@ Both sub-modes handle **any closed shape** of **any size**.
 
 ## Marker Blocks
 
-The following CC Tweaked blocks are recognized as perimeter markers:
+**Rectangle & Full Perimeter modes** — any of these CC Tweaked blocks:
 
 - `computercraft:wired_modem`
 - `computercraft:wired_modem_full`
 - `computercraft:cable`
+
+**Corner mode** — specifically `computercraft:cable` (networking cable) for the L-shaped corner markers.
 
 These have zero chance of natural world generation, making them ideal markers.
 
