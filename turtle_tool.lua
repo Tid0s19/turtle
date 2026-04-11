@@ -13,7 +13,7 @@ local MARKER_BLOCKS = {
 }
 
 local REPLACEABLE_PATTERNS = {
-    "grass", "flower", "fern", "sapling", "vine", "leaves", "log", "wood",
+    "flower", "fern", "sapling", "vine", "leaves", "log", "wood",
     "mushroom", "dead_bush", "tall_grass", "seagrass", "kelp", "bamboo",
     "azalea", "moss", "lichen", "dripleaf", "spore_blossom", "hanging_roots",
     "mangrove_roots", "sugar_cane", "cactus", "sweet_berry", "cave_vines",
