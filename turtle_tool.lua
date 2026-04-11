@@ -167,6 +167,42 @@ local function refuel()
     turtle.select(prev)
 end
 
+local function refuelFromChest()
+    local sx, sy, sz, sf = pos.x, pos.y, pos.z, facing
+    returnHome()
+    face(2) -- face chest
+
+    turtle.select(16)
+    -- Use any fuel already in slot 16
+    turtle.refuel()
+    -- Drop leftovers (non-fuel) back to chest
+    turtle.drop()
+
+    -- Pull fuel from chest until we have enough
+    while true do
+        local level = turtle.getFuelLevel()
+        if level == "unlimited" or level >= FUEL_WARNING then
+            break
+        end
+        if not turtle.suck(1) then
+            break -- chest empty
+        end
+        if turtle.refuel() then
+            -- It was fuel, grab more of the same
+            turtle.suck()
+            turtle.refuel()
+        else
+            -- Not fuel, put it back
+            turtle.drop()
+        end
+    end
+
+    turtle.select(1)
+    face(0)
+    moveTo(sx, sy, sz)
+    face(sf)
+end
+
 local function checkFuel(needed)
     local level = turtle.getFuelLevel()
     if level == "unlimited" then return true end
@@ -175,9 +211,10 @@ local function checkFuel(needed)
         level = turtle.getFuelLevel()
     end
     if level < FUEL_WARNING then
-        return false
+        refuelFromChest()
+        level = turtle.getFuelLevel()
     end
-    return true
+    return level >= FUEL_WARNING
 end
 
 local function isInventoryFull()
@@ -664,6 +701,7 @@ local function followCornerRoute()
 
     -- Check if position has cable below (moves turtle there)
     local function hasCableAt(x, z)
+        checkFuel(FUEL_WARNING)
         moveTo(x, 1, z)
         local ok, data = turtle.inspectDown()
         return ok and data.name == "computercraft:cable"
