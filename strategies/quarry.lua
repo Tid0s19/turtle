@@ -36,7 +36,7 @@ end
 local M = {
   name = "quarry",
   display = "Quarry",
-  description = "Mine a rectangular area down to bedrock (or a configured Y).",
+  description = "Area to bedrock",
 }
 
 function M.promptParams(defaults)

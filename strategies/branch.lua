@@ -1,6 +1,6 @@
 local M = {
   name = "branch", display = "Branch",
-  description = "Main tunnel with perpendicular branches every N blocks.",
+  description = "Main + side branches",
 }
 
 function M.promptParams(defaults)

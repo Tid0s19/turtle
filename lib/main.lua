@@ -50,12 +50,14 @@ end
 
 local function main_menu()
   render_header()
-  ui.print_line(4, ui.center_text("\u{26CF}  Mining Turtle", 39))
+  ui.print_line(4, ui.center_text("Mining Turtle", 39))
   local strats = loader.list()
   local row = 6
   for i, n in ipairs(strats) do
     local s = loader.load(n)
-    ui.print_line(row, string.format("  [%d] %-9s  %s", i, s.display, s.description or ""))
+    local desc = s.description or ""
+    if #desc > 22 then desc = desc:sub(1, 21) .. "~" end
+    ui.print_line(row, string.format("  [%d] %-7s %s", i, s.display, desc))
     row = row + 1
   end
   ui.hr(row); row = row + 1
@@ -193,9 +195,9 @@ local function home_calibrate_screen()
   local ok_back, data_back = _G.turtle.inspect()
   _G.turtle.turnRight(); _G.turtle.turnRight()
   if ok_back and data_back.name:match("chest") then
-    ui.print_line(6, "  \u{2713} chest detected behind")
+    ui.print_line(6, "  OK  chest detected behind")
   else
-    ui.print_line(6, "  \u{2717} no chest behind; place one and retry")
+    ui.print_line(6, "  X   no chest behind; place + retry")
   end
   ui.print_line(13, " [any] back")
   read_key()
@@ -205,7 +207,7 @@ local function recovery_menu()
   local c = state.load_current()
   local s = state.load_strategy()
   render_header("recovery")
-  ui.print_line(4,  " \u{26A0} Previous run did not complete")
+  ui.print_line(4,  " [!] Previous run did not complete")
   ui.print_line(6,  string.format("  strategy: %s", c and c.strategy or "?"))
   ui.print_line(7,  string.format("  phase:    %s", c and c.phase or "?"))
   ui.print_line(8,  string.format("  pos:      (%d,%d,%d)",

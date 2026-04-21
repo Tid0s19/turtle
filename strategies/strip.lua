@@ -1,6 +1,6 @@
 local M = {
   name = "strip", display = "Strip",
-  description = "Dig a straight 1-wide, 2-tall tunnel of a given length.",
+  description = "Straight 2-tall tunnel",
 }
 
 function M.promptParams(defaults)

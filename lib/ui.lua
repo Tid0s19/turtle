@@ -13,11 +13,11 @@ function M.progress_bar(frac, width)
   width = width or 14
   frac = math.max(0, math.min(1, frac))
   local filled = math.floor(frac * width + 0.5)
-  return string.rep("\u{2588}", filled) .. string.rep("\u{2591}", width - filled)
+  return string.rep("#", filled) .. string.rep(".", width - filled)
 end
 
 function M.format_fuel(f)
-  if f == "unlimited" then return "\u{221E}" end
+  if f == "unlimited" then return "inf" end
   if f >= 1000 then return string.format("%.1fk", f / 1000) end
   return tostring(f)
 end
@@ -33,11 +33,11 @@ function M.print_line(row, text)
 end
 
 function M.hr(row, char)
-  M.print_line(row, string.rep(char or "\u{2500}", W))
+  M.print_line(row, string.rep(char or "-", W))
 end
 
 function M.header(label, fuel, keep_count)
-  M.print_line(1, string.format("\u{26CF} %-15s fuel %-6s keep %d/16",
+  M.print_line(1, string.format("%-14s fuel %-6s keep %d/16",
     label or "turtle", M.format_fuel(fuel or 0), keep_count or 0))
   M.hr(2)
 end
