@@ -16,11 +16,26 @@ local stop_flag, pause_flag = false, false
 local function shouldStop() return stop_flag end
 local function shouldPause() return pause_flag end
 
+local NUMBER_KEY_NAMES = {
+  one = 1, two = 2, three = 3, four = 4, five = 5,
+  six = 6, seven = 7, eight = 8, nine = 9, zero = 0,
+}
+
 local function read_key()
   while true do
     local ev, key = os.pullEvent("key")
     return key
   end
+end
+
+local function read_key_name()
+  local k = read_key()
+  return keys.getName and keys.getName(k) or tostring(k)
+end
+
+local function key_to_digit(ch)
+  if ch and ch:match("^%d$") then return tonumber(ch) end
+  return NUMBER_KEY_NAMES[ch or ""]
 end
 
 local function read_line(prompt)
@@ -67,12 +82,9 @@ local function main_menu()
   ui.hr(row+3)
   ui.print_line(row+4, "  [Q] Quit")
   while true do
-    local key = read_key()
-    local ch = keys.getName and keys.getName(key) or tostring(key)
-    if ch:match("^[%d]$") then
-      local idx = tonumber(ch)
-      if strats[idx] then return "strategy", strats[idx] end
-    end
+    local ch = read_key_name()
+    local idx = key_to_digit(ch)
+    if idx and strats[idx] then return "strategy", strats[idx] end
     if ch == "l" then return "learn" end
     if ch == "s" then return "settings" end
     if ch == "h" then return "home_calibrate" end
@@ -173,19 +185,147 @@ local function learn_screen()
   read_key()
 end
 
+local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
+
+local function format_value(item)
+  local v = item.get()
+  if item.kind == "bool" then return v and "on" or "off" end
+  if item.kind == "enum" then return tostring(v) end
+  if item.kind == "float" then return string.format(item.fmt or "%.2f", v) end
+  return tostring(v)
+end
+
+local function adjust(item, direction)
+  local v = item.get()
+  if item.kind == "bool" then item.set(not v); return end
+  if item.kind == "enum" then
+    local idx = 1
+    for i, val in ipairs(item.values) do if val == v then idx = i; break end end
+    idx = ((idx - 1 + direction) % #item.values) + 1
+    item.set(item.values[idx])
+    return
+  end
+  local step = item.step or 1
+  item.set(clamp(v + direction * step, item.min, item.max))
+end
+
+local function edit_page(title, items)
+  local cursor = 1
+  while true do
+    render_header("settings > " .. title)
+    for i, item in ipairs(items) do
+      local prefix = (i == cursor) and ">" or " "
+      ui.print_line(3 + i, string.format(" %s %-18s %s",
+        prefix, item.label, format_value(item)))
+    end
+    ui.hr(12)
+    ui.print_line(13, " up/dn move  L/R adjust  Q back")
+    local ch = read_key_name()
+    if ch == "up" then cursor = math.max(1, cursor - 1)
+    elseif ch == "down" then cursor = math.min(#items, cursor + 1)
+    elseif ch == "left" then adjust(items[cursor], -1)
+    elseif ch == "right" or ch == "enter" or ch == "space" then
+      adjust(items[cursor], 1)
+    elseif ch == "q" or ch == "backspace" then
+      config.save(CONFIG_PATH, cfg)
+      return
+    end
+  end
+end
+
+local function inventory_settings_page()
+  edit_page("inventory", {
+    { label = "junk policy", kind = "enum",
+      values = { "drop", "keep", "overflow" },
+      get = function() return cfg.inventory.junk_policy end,
+      set = function(v) cfg.inventory.junk_policy = v end },
+    { label = "keep for home", kind = "int", min = 1, max = 15, step = 1,
+      get = function() return cfg.inventory.keep_slots_before_home end,
+      set = function(v) cfg.inventory.keep_slots_before_home = v end },
+    { label = "reserved fuel slot", kind = "int", min = 1, max = 16, step = 1,
+      get = function() return cfg.inventory.reserved_fuel_slot end,
+      set = function(v) cfg.inventory.reserved_fuel_slot = v end },
+  })
+end
+
+local function fuel_settings_page()
+  edit_page("fuel", {
+    { label = "refuel below", kind = "int", min = 0, max = 100000, step = 500,
+      get = function() return cfg.fuel.refuel_below end,
+      set = function(v) cfg.fuel.refuel_below = v end },
+    { label = "reserve home mult", kind = "float", min = 1.0, max = 3.0, step = 0.25,
+      fmt = "%.2f",
+      get = function() return cfg.fuel.reserve_for_home end,
+      set = function(v) cfg.fuel.reserve_for_home = v end },
+    { label = "abort below", kind = "int", min = 0, max = 10000, step = 100,
+      get = function() return cfg.fuel.abort_below end,
+      set = function(v) cfg.fuel.abort_below = v end },
+  })
+end
+
+local function safety_settings_page()
+  edit_page("safety", {
+    { label = "seal lava", kind = "bool",
+      get = function() return cfg.safety.seal_lava end,
+      set = function(v) cfg.safety.seal_lava = v end },
+    { label = "seal water", kind = "bool",
+      get = function() return cfg.safety.seal_water end,
+      set = function(v) cfg.safety.seal_water = v end },
+    { label = "max redig", kind = "int", min = 1, max = 100, step = 5,
+      get = function() return cfg.safety.max_redig_attempts end,
+      set = function(v) cfg.safety.max_redig_attempts = v end },
+    { label = "max attack", kind = "int", min = 1, max = 100, step = 1,
+      get = function() return cfg.safety.max_attack_attempts end,
+      set = function(v) cfg.safety.max_attack_attempts = v end },
+  })
+end
+
+local function logging_settings_page()
+  edit_page("logging", {
+    { label = "level", kind = "enum",
+      values = { "debug", "info", "warn", "error" },
+      get = function() return cfg.logging.level end,
+      set = function(v)
+        cfg.logging.level = v
+        logger.configure({ level = v })
+      end },
+    { label = "keep runs", kind = "int", min = 1, max = 100, step = 1,
+      get = function() return cfg.logging.keep_runs end,
+      set = function(v) cfg.logging.keep_runs = v end },
+  })
+end
+
+local function ui_settings_page()
+  edit_page("ui", {
+    { label = "confirm destructive", kind = "bool",
+      get = function() return cfg.ui.confirm_destructive end,
+      set = function(v) cfg.ui.confirm_destructive = v end },
+    { label = "show estimate detail", kind = "bool",
+      get = function() return cfg.ui.show_estimate_detail end,
+      set = function(v) cfg.ui.show_estimate_detail = v end },
+  })
+end
+
 local function settings_screen()
-  render_header("settings")
-  ui.print_line(4,  " Config loaded from " .. CONFIG_PATH)
-  ui.print_line(6,  string.format("  junk_policy:       %s", cfg.inventory.junk_policy))
-  ui.print_line(7,  string.format("  keep_slots_home:   %d", cfg.inventory.keep_slots_before_home))
-  ui.print_line(8,  string.format("  refuel_below:      %d", cfg.fuel.refuel_below))
-  ui.print_line(9,  string.format("  seal_lava:         %s", tostring(cfg.safety.seal_lava)))
-  ui.print_line(10, string.format("  log level:         %s", cfg.logging.level))
-  ui.hr(12)
-  ui.print_line(13, " [E] edit /config.lua   [any] back")
-  local k = read_key()
-  local ch = keys.getName and keys.getName(k) or ""
-  if ch == "e" then shell.run("edit", CONFIG_PATH) end
+  while true do
+    render_header("settings")
+    ui.print_line(4, " Pick a category:")
+    ui.print_line(6,  "  [1] Inventory")
+    ui.print_line(7,  "  [2] Fuel")
+    ui.print_line(8,  "  [3] Safety")
+    ui.print_line(9,  "  [4] Logging")
+    ui.print_line(10, "  [5] UI")
+    ui.hr(12)
+    ui.print_line(13, " [Q] back to main menu")
+    local ch = read_key_name()
+    local n = key_to_digit(ch)
+    if     n == 1 then inventory_settings_page()
+    elseif n == 2 then fuel_settings_page()
+    elseif n == 3 then safety_settings_page()
+    elseif n == 4 then logging_settings_page()
+    elseif n == 5 then ui_settings_page()
+    elseif ch == "q" or ch == "backspace" then return end
+  end
 end
 
 local function home_calibrate_screen()
