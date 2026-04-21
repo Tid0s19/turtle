@@ -75,6 +75,7 @@ local function run_body(params, ctx, start_col, start_row)
       local mc_ok, mc_err = mine_column(ctx, target_y and -target_y or "bedrock")
       if not mc_ok then return false, mc_err end
       ctx.inv.handle_junk_by_policy()
+      ctx.inv.refuel_if_low()
       ctx.saveProgress({ col = col, row = r, next_action = "next_cell" })
       ::continue::
     end

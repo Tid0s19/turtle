@@ -27,6 +27,7 @@ local function run_body(params, ctx, start_z)
     if not ok then return false, err end
     movement.digUp()
     ctx.inv.handle_junk_by_policy()
+    ctx.inv.refuel_if_low()
     ctx.saveProgress({ length_done = z, direction = "outbound" })
   end
   ctx.nav.goTo(0, 0, 0)

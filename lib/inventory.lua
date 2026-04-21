@@ -47,19 +47,49 @@ function M.drop_junk_in_place()
   turtle.select(1)
 end
 
-function M.refuel_from_slot(target)
-  local slot = cfg.inventory.reserved_fuel_slot
-  local prev = turtle.getSelectedSlot()
+local function fuel_level()
+  local f = turtle.getFuelLevel()
+  if f == "unlimited" then return math.huge end
+  return f
+end
+
+local function burn_from(slot)
   turtle.select(slot)
-  local ok = turtle.refuel()
-  turtle.select(prev)
-  if not ok then return false end
-  while turtle.getFuelLevel() ~= "unlimited" and turtle.getFuelLevel() < target do
-    turtle.select(slot)
-    if not turtle.refuel() then turtle.select(prev); return false end
+  return turtle.refuel()
+end
+
+local function iter_fuel_slots()
+  local reserved = cfg.inventory.reserved_fuel_slot
+  local out = { reserved }
+  for i = 1, 16 do
+    if i ~= reserved then
+      local d = turtle.getItemDetail(i)
+      if d and config_mod.classify(d.name, cfg) == "fuel" then
+        table.insert(out, i)
+      end
+    end
+  end
+  return out
+end
+
+function M.refuel_from_slot(target)
+  local prev = turtle.getSelectedSlot()
+  local any = false
+  for _, slot in ipairs(iter_fuel_slots()) do
+    while fuel_level() < target do
+      if not turtle.getItemDetail(slot) then break end
+      if not burn_from(slot) then break end
+      any = true
+    end
+    if fuel_level() >= target then break end
   end
   turtle.select(prev)
-  return true
+  return any
+end
+
+function M.refuel_if_low()
+  if fuel_level() >= cfg.fuel.refuel_below then return false end
+  return M.refuel_from_slot(cfg.fuel.refuel_below)
 end
 
 local function find_slot_by_tag(tag)

@@ -37,6 +37,7 @@ local function carve_branch_at(z, params, ctx, dir)
     if not ok then return false, err end
     require("lib.movement").digUp()
     ctx.inv.handle_junk_by_policy()
+    ctx.inv.refuel_if_low()
   end
   ctx.nav.goTo(0, 0, z)
 end
@@ -50,6 +51,7 @@ local function run_body(params, ctx, start_z, start_side)
     if start_side ~= "right" then carve_branch_at(z, params, ctx, 3) end
     carve_branch_at(z, params, ctx, 1)
     start_side = nil
+    ctx.inv.refuel_if_low()
     ctx.saveProgress({ branch_idx = b, direction = "done" })
   end
   ctx.nav.goTo(0, 0, 0)
