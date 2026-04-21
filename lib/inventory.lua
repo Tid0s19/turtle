@@ -114,6 +114,28 @@ function M.place_seal_forward() return do_place_seal(turtle.place) end
 function M.place_seal_up()      return do_place_seal(turtle.placeUp) end
 function M.place_seal_down()    return do_place_seal(turtle.placeDown) end
 
+local function find_empty_bucket_slot()
+  for i = 1, 16 do
+    local d = turtle.getItemDetail(i)
+    if d and d.name == "minecraft:bucket" then return i end
+  end
+  return nil
+end
+
+local function do_bucket(place_fn)
+  local s = find_empty_bucket_slot()
+  if not s then return false end
+  local prev = turtle.getSelectedSlot()
+  turtle.select(s)
+  local ok = place_fn()
+  turtle.select(prev)
+  return ok
+end
+
+function M.bucket_liquid_forward() return do_bucket(turtle.place) end
+function M.bucket_liquid_up()      return do_bucket(turtle.placeUp) end
+function M.bucket_liquid_down()    return do_bucket(turtle.placeDown) end
+
 function M.deposit_all_keep()
   for i = 1, 16 do
     local d = turtle.getItemDetail(i)

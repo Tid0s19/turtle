@@ -92,12 +92,55 @@ local function main_menu()
   end
 end
 
+local function edit_params(title, schema, initial)
+  local params = {}
+  for _, spec in ipairs(schema) do
+    params[spec.key] = initial[spec.key]
+      or (type(spec.default) ~= "nil" and spec.default) or 0
+  end
+  local items = {}
+  for _, spec in ipairs(schema) do
+    table.insert(items, {
+      label = spec.label, kind = spec.kind,
+      min = spec.min, max = spec.max, step = spec.step,
+      values = spec.values, display = spec.display, fmt = spec.fmt,
+      get = function() return params[spec.key] end,
+      set = function(v) params[spec.key] = v end,
+    })
+  end
+  local cursor = 1
+  while true do
+    render_header(title)
+    ui.print_line(3, " Set params, then press Enter.")
+    for i, item in ipairs(items) do
+      local prefix = (i == cursor) and ">" or " "
+      ui.print_line(4 + i, string.format(" %s %-18s %s",
+        prefix, item.label, format_value(item)))
+    end
+    ui.hr(12)
+    ui.print_line(13, " up/dn  L/R adj  Enter ok  Q back")
+    local ch = read_key_name()
+    if ch == "up" then cursor = math.max(1, cursor - 1)
+    elseif ch == "down" then cursor = math.min(#items, cursor + 1)
+    elseif ch == "left" then adjust(items[cursor], -1)
+    elseif ch == "right" then adjust(items[cursor], 1)
+    elseif ch == "enter" then return params
+    elseif ch == "space" then adjust(items[cursor], 1)
+    elseif ch == "q" or ch == "backspace" then return nil end
+  end
+end
+
 local function run_strategy(name)
   local s = loader.load(name)
-  render_header(s.display)
-  ui.print_line(4, " Configure " .. s.display .. ":")
-  local params = s.promptParams(cfg.strategy_defaults[name] or {})
-  if not params then return end
+  local initial = s.promptParams(cfg.strategy_defaults[name] or {})
+  if not initial then return end
+  local params
+  if s.paramSchema then
+    params = edit_params(s.display, s.paramSchema, initial)
+    if not params then return end
+  else
+    params = initial
+  end
 
   local est = s.estimate(params)
   local have_fuel = (_G.turtle and _G.turtle.getFuelLevel()) or 0
@@ -189,6 +232,7 @@ local function clamp(v, lo, hi) return math.max(lo, math.min(hi, v)) end
 
 local function format_value(item)
   local v = item.get()
+  if item.display then return item.display(v) end
   if item.kind == "bool" then return v and "on" or "off" end
   if item.kind == "enum" then return tostring(v) end
   if item.kind == "float" then return string.format(item.fmt or "%.2f", v) end
@@ -268,6 +312,9 @@ local function safety_settings_page()
     { label = "seal lava", kind = "bool",
       get = function() return cfg.safety.seal_lava end,
       set = function(v) cfg.safety.seal_lava = v end },
+    { label = "bucket lava", kind = "bool",
+      get = function() return cfg.safety.bucket_lava end,
+      set = function(v) cfg.safety.bucket_lava = v end },
     { label = "seal water", kind = "bool",
       get = function() return cfg.safety.seal_water end,
       set = function(v) cfg.safety.seal_water = v end },

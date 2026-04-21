@@ -60,7 +60,7 @@ local function classify_block(data)
   return "block"
 end
 
-local function try_move(dir_move, dir_inspect, dir_dig, dir_seal, axis_delta)
+local function try_move(dir_move, dir_inspect, dir_dig, dir_seal, dir_bucket, axis_delta)
   fire_exit()
   if dir_move() then
     pos.x = pos.x + axis_delta.x
@@ -77,6 +77,17 @@ local function try_move(dir_move, dir_inspect, dir_dig, dir_seal, axis_delta)
   if kind == "bedrock" then return false, "bedrock" end
 
   if kind == "liquid" then
+    local is_lava = data and data.name and data.name:match("lava") ~= nil
+    if is_lava and cfg.safety.bucket_lava and dir_bucket and dir_bucket() then
+      if dir_move() then
+        pos.x = pos.x + axis_delta.x
+        pos.y = pos.y + axis_delta.y
+        pos.z = pos.z + axis_delta.z
+        state.persist_position(pos, facing)
+        fire_enter()
+        return true
+      end
+    end
     if not dir_seal() then return false, "no_seal" end
     dir_dig()
     if dir_move() then
@@ -132,17 +143,23 @@ end
 function M.forward()
   local d = { x = DX[facing], y = 0, z = DZ[facing] }
   return try_move(turtle.forward, turtle.inspect, turtle.dig,
-    function() return inv.place_seal_forward() end, d)
+    function() return inv.place_seal_forward() end,
+    function() return inv.bucket_liquid_forward and inv.bucket_liquid_forward() end,
+    d)
 end
 
 function M.up()
   return try_move(turtle.up, turtle.inspectUp, turtle.digUp,
-    function() return inv.place_seal_up() end, { x=0, y=1, z=0 })
+    function() return inv.place_seal_up() end,
+    function() return inv.bucket_liquid_up and inv.bucket_liquid_up() end,
+    { x=0, y=1, z=0 })
 end
 
 function M.down()
   return try_move(turtle.down, turtle.inspectDown, turtle.digDown,
-    function() return inv.place_seal_down() end, { x=0, y=-1, z=0 })
+    function() return inv.place_seal_down() end,
+    function() return inv.bucket_liquid_down and inv.bucket_liquid_down() end,
+    { x=0, y=-1, z=0 })
 end
 
 function M.back()

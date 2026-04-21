@@ -24,19 +24,21 @@ local function mine_column(ctx, target_y_or_bedrock)
   return true
 end
 
-local function home_cycle(ctx)
-  local home = require("lib.state").load_current().home
-  ctx.nav.goTo(home.x, home.y, home.z)
-  ctx.nav.face(2)
-  ctx.inv.deposit_all_keep()
-  ctx.inv.refuel_from_slot(ctx.config.fuel.refuel_below * 2)
-  ctx.nav.face(0)
-end
+local home_mod = require("lib.home")
 
 local M = {
   name = "quarry",
   display = "Quarry",
   description = "Area to bedrock",
+  paramSchema = {
+    { key = "width",  label = "width",  kind = "int",
+      min = 1, max = 64, step = 1, default = 8 },
+    { key = "length", label = "length", kind = "int",
+      min = 1, max = 64, step = 1, default = 8 },
+    { key = "depth",  label = "depth",  kind = "int",
+      min = 0, max = 256, step = 4, default = 0,
+      display = function(v) return v == 0 and "bedrock" or tostring(v) end },
+  },
 }
 
 function M.promptParams(defaults)
@@ -44,12 +46,18 @@ function M.promptParams(defaults)
   return {
     width  = defaults.width  or 8,
     length = defaults.length or 8,
-    depth  = defaults.depth  or "bedrock",
+    depth  = defaults.depth  or 0,
   }
 end
 
+local function resolve_depth(d)
+  if d == nil or d == 0 or d == "bedrock" then return nil end
+  return tonumber(d)
+end
+
 function M.estimate(params)
-  local depth_guess = params.depth == "bedrock" and 64 or tonumber(params.depth) or 32
+  local target = resolve_depth(params.depth)
+  local depth_guess = target or 64
   local cells = params.width * params.length
   local blocks = cells * depth_guess
   local fuel = cells * (depth_guess * 2) + (params.width + params.length) * 2
@@ -62,7 +70,8 @@ function M.preflight(params)
 end
 
 local function run_body(params, ctx, start_col, start_row)
-  local target_y = params.depth == "bedrock" and nil or tonumber(params.depth)
+  local depth_blocks = resolve_depth(params.depth)
+  local target_y = depth_blocks and -depth_blocks or nil
   for col = start_col, params.width - 1 do
     local forward = col % 2 == 0
     for r = 0, params.length - 1 do
@@ -71,8 +80,8 @@ local function run_body(params, ctx, start_col, start_row)
       local z = forward and r or (params.length - 1 - r)
       local ok, err = ctx.nav.goTo(col, 0, z)
       if not ok then return false, err end
-      if ctx.inv.should_go_home() then home_cycle(ctx) ; ctx.nav.goTo(col, 0, z) end
-      local mc_ok, mc_err = mine_column(ctx, target_y and -target_y or "bedrock")
+      if ctx.inv.should_go_home() then home_mod.excursion(ctx) end
+      local mc_ok, mc_err = mine_column(ctx, target_y or "bedrock")
       if not mc_ok then return false, mc_err end
       ctx.inv.handle_junk_by_policy()
       ctx.inv.refuel_if_low()
@@ -80,7 +89,7 @@ local function run_body(params, ctx, start_col, start_row)
       ::continue::
     end
   end
-  home_cycle(ctx)
+  home_mod.deposit(ctx)
   return true
 end
 

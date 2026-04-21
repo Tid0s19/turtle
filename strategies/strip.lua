@@ -1,11 +1,15 @@
 local M = {
   name = "strip", display = "Strip",
   description = "Straight 2-tall tunnel",
+  paramSchema = {
+    { key = "length", label = "length", kind = "int",
+      min = 1, max = 256, step = 4, default = 32 },
+  },
 }
 
 function M.promptParams(defaults)
   defaults = defaults or {}
-  return { length = defaults.length or 64 }
+  return { length = defaults.length or 32 }
 end
 
 function M.estimate(params)
@@ -21,6 +25,7 @@ end
 
 local function run_body(params, ctx, start_z)
   local movement = require("lib.movement")
+  local home = require("lib.home")
   for z = start_z, params.length do
     if ctx.shouldStop() then return false, "stopped" end
     local ok, err = ctx.nav.goTo(0, 0, z)
@@ -28,12 +33,10 @@ local function run_body(params, ctx, start_z)
     movement.digUp()
     ctx.inv.handle_junk_by_policy()
     ctx.inv.refuel_if_low()
+    if ctx.inv.should_go_home() then home.excursion(ctx) end
     ctx.saveProgress({ length_done = z, direction = "outbound" })
   end
-  ctx.nav.goTo(0, 0, 0)
-  ctx.nav.face(2)
-  ctx.inv.deposit_all_keep()
-  ctx.nav.face(0)
+  home.deposit(ctx)
   return true
 end
 

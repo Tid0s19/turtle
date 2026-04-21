@@ -38,6 +38,7 @@ local DEFAULTS = {
   safety = {
     seal_lava = true,
     seal_water = false,
+    bucket_lava = true,
     dangerous_liquids = { ".*:lava$", ".*:crude_oil$" },
     bedrock_names = { "minecraft:bedrock", ".*:bedrock$", "minecraft:barrier" },
     max_redig_attempts = 30,

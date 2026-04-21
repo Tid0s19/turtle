@@ -1,6 +1,14 @@
 local M = {
   name = "branch", display = "Branch",
   description = "Main + side branches",
+  paramSchema = {
+    { key = "main_length",   label = "main length",   kind = "int",
+      min = 1, max = 256, step = 4, default = 32 },
+    { key = "branch_length", label = "branch length", kind = "int",
+      min = 1, max = 64,  step = 2, default = 8 },
+    { key = "branch_spacing",label = "branch spacing",kind = "int",
+      min = 1, max = 16,  step = 1, default = 3 },
+  },
 }
 
 function M.promptParams(defaults)
@@ -28,6 +36,8 @@ function M.preflight(params)
   return true
 end
 
+local home_mod = require("lib.home")
+
 local function carve_branch_at(z, params, ctx, dir)
   ctx.nav.goTo(0, 0, z)
   ctx.nav.face(dir)
@@ -38,6 +48,7 @@ local function carve_branch_at(z, params, ctx, dir)
     require("lib.movement").digUp()
     ctx.inv.handle_junk_by_policy()
     ctx.inv.refuel_if_low()
+    if ctx.inv.should_go_home() then home_mod.excursion(ctx) end
   end
   ctx.nav.goTo(0, 0, z)
 end
