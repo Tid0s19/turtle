@@ -1,0 +1,8 @@
+# Runtime artifacts — turtle writes these at runtime, never committed
+/state/
+/logs/
+/config.lua
+
+# Local dev
+*.tmp
+*.bak
