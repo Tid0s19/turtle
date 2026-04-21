@@ -23,9 +23,9 @@ local DEFAULTS = {
     },
     fuel_patterns = { ".*:coal$", ".*:charcoal$" },
     seal = {
-      "minecraft:cobblestone", "minecraft:cobbled_deepslate", "minecraft:dirt",
+      "minecraft:cobbled_deepslate", "minecraft:dirt",
     },
-    seal_patterns = { ".*:cobblestone$", ".*:cobbled_.*", ".*:dirt$" },
+    seal_patterns = { ".*:dirt$" },
     junk_policy = "drop",
     keep_slots_before_home = 12,
     reserved_fuel_slot = 16,
