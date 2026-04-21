@@ -5,6 +5,7 @@ local BASE = "https://raw.githubusercontent.com/Tid0s19/turtle/main/"
 
 local FILES = {
   "mine",
+  "startup.lua",
   "lib/util.lua",
   "lib/logger.lua",
   "lib/config.lua",

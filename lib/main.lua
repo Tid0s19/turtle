@@ -212,17 +212,28 @@ local function recovery_menu()
     c and c.pos.x or 0, c and c.pos.y or 0, c and c.pos.z or 0))
   ui.print_line(10, "  [R] resume   [H] panic home")
   ui.print_line(11, "  [W] wipe     [Q] quit")
+  local countdown = 10
+  ui.print_line(13, string.format("  auto-resuming in %2ds... (any key cancels)", countdown))
+  local timer = os.startTimer(1)
   while true do
-    local k = read_key()
-    local ch = keys.getName and keys.getName(k) or ""
-    if ch == "r" then return "resume", c, s end
-    if ch == "h" then return "panic" end
-    if ch == "w" then
-      term.setCursorPos(1, 12)
-      term.write("type strategy name to confirm: ")
-      if (read() or "") == (c and c.strategy or "?") then return "wipe" end
+    local ev, arg = os.pullEvent()
+    if ev == "timer" and arg == timer then
+      countdown = countdown - 1
+      if countdown <= 0 then return "resume", c, s end
+      ui.print_line(13, string.format("  auto-resuming in %2ds... (any key cancels)", countdown))
+      timer = os.startTimer(1)
+    elseif ev == "key" then
+      ui.print_line(13, string.rep(" ", 39))
+      local ch = keys.getName and keys.getName(arg) or ""
+      if ch == "r" then return "resume", c, s end
+      if ch == "h" then return "panic" end
+      if ch == "w" then
+        term.setCursorPos(1, 12)
+        term.write("type strategy name to confirm: ")
+        if (read() or "") == (c and c.strategy or "?") then return "wipe" end
+      end
+      if ch == "q" then return "quit" end
     end
-    if ch == "q" then return "quit" end
   end
 end
 
