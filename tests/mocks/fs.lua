@@ -30,8 +30,8 @@ function M.open(path, mode)
   elseif mode == "w" then
     local buf = {}
     local h = {
-      write = function(_, s) table.insert(buf, tostring(s)) end,
-      writeLine = function(_, s) table.insert(buf, tostring(s) .. "\n") end,
+      write = function(s) table.insert(buf, tostring(s)) end,
+      writeLine = function(s) table.insert(buf, tostring(s) .. "\n") end,
       close = function() files[path] = table.concat(buf) end,
     }
     return h
