@@ -1,0 +1,13 @@
+local t = require("tests.runner")
+
+t.describe("runner sanity", function()
+  t.it("passes a trivial assertion", function()
+    t.assert_eq(1 + 1, 2)
+  end)
+  t.it("catches a failing assertion", function()
+    t.assert_error(function() t.assert_eq(1, 2) end, "expected 2")
+  end)
+  t.it("does deep equality on tables", function()
+    t.assert_deep_eq({a = 1, b = {c = 2}}, {a = 1, b = {c = 2}})
+  end)
+end)
